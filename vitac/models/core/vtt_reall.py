@@ -254,44 +254,26 @@ class VTT_ReAll(nn.Module):
         return visible_patches, mask, restore_idxs
 
     def get_representations(
-        self, img: torch.Tensor, language: Optional[Union[List[str], Tuple[str]]] = None, mode: str = "multimodal"
+        self, img: torch.Tensor, tac: torch.Tensor, mode: str = "patch"
     ) -> torch.Tensor:
         """
-        Given either a singleton (img, language) pair or a batch of images and language, extract representations
-        subject to the specified mode in < multimodal | visual >.
-
         :param img: Processed batch of images :: [bsz, 3, 224, 224]
-        :param language: Input language as `List[str] | Tuple[str] | None`
-        :param mode: Type of representations to extract -- `multimodal` (both vision+text), `visual` (visual only)
-
-        :return: Extracted representations given (img, language) input as sequence.
+        :param tac: Input tactile as torch.Tensor
+        :return: Extracted representations given input as sequence.
         """
-        assert img.ndim == 4 and (
-            language is None or isinstance(language, list) or isinstance(language, tuple)
-        ), "Invalid input to `get_representations()`"
-        assert mode in {"multimodal", "visual"}, f"Extraction mode `{mode}` not supported!"
-
-        # Tokenize Language --> note max length is 20!
-        if language is None:
-            lang, lang_mask = [torch.zeros(img.shape[0], 20, dtype=int, device=self.lm.device) for _ in range(2)]
-            lang[:, 0], lang_mask[:, 0] = self.tokenizer.cls_token_id, 1
-        else:
-            tokens = self.tokenizer(language, return_tensors="pt", max_length=20, padding="max_length", truncation=True)
-            lang, lang_mask = tokens["input_ids"].to(self.lm.device), tokens["attention_mask"].to(self.lm.device)
-
-            # Tile Language & Language Mask if mismatch with # images!
-            if not len(lang) == len(img):
-                lang = repeat(lang, "b seq -> (bsz b) seq", bsz=img.size(0))
-                lang_mask = repeat(lang_mask, "b seq -> (bsz b) seq", bsz=img.size(0))
-
+        assert img.ndim == 4, "Invalid input to `get_representations()`"
+        assert mode in {"patch", "cls"}, f"Extraction mode `{mode}` not supported!"
         # Extract desired representations...
-        representations = self.encode(img, lang, lang_mask)
-        return representations if mode == "multimodal" else representations[:, : -lang_mask.shape[-1]]
+        representations = self.encode(img, tac)
+        if not self.use_cls_token:
+            # return representations[:, :-tac.shape[1], :]
+            return representations
+        else:
+            return representations[:, 1:] if mode == "patch" else representations[:, 0]
 
-    def encode(self, img: torch.Tensor, lang: torch.Tensor, lang_mask: torch.Tensor) -> torch.Tensor:
-        """Default representation extraction function, given a batch of images and tokenized language."""
-        lang_embeddings = self.encode_language(lang, lang_mask)
-        projected_language = self.lang2encoder(lang_embeddings)
+    def encode(self, img: torch.Tensor, tac: torch.Tensor) -> torch.Tensor:
+        touch_embeddings = self.encoder_tactile(tac)
+        projected_tac = self.tactile2encoder(touch_embeddings)
 
         # Patchify
         patches = self.patch2embed(img)
@@ -303,14 +285,17 @@ class VTT_ReAll(nn.Module):
 
         # Position Encoding
         patches_pe = patches + self.encoder_pe
+        tac_patches_pe = projected_tac + self.encoder_pe_tac
 
         # Add "modality" embeddings to patches & language
-        img_embeddings, lang_embeddings = patches_pe + self.img_token, projected_language + self.lang_token
+        img_embeddings= patches_pe + self.img_token
+        tac_patches = tac_patches_pe + self.tactile_token
 
-        # Create "dummy" visible mask, concatenate image patches & language, feed to Transformer
-        patches_mask = torch.ones_like(img_embeddings[..., -1], dtype=lang_mask.dtype)
-        multimodal_embeddings = torch.cat([img_embeddings, lang_embeddings], dim=1)  # Merge on sequence length...
-        multimodal_mask = torch.cat([patches_mask, lang_mask], dim=1)  # Merge on sequence length...
+        # Create "dummy" visible mask, concatenate image patches & tactile, feed to Transformer
+        patches_mask = torch.ones_like(img_embeddings[..., -1], dtype=torch.float32)
+        tactile_mask = torch.ones_like(tac_patches[..., -1], dtype=torch.float32)
+        multimodal_embeddings = torch.cat([img_embeddings, tac_patches], dim=1)  # Merge on sequence length...
+        multimodal_mask = torch.cat([patches_mask, tactile_mask], dim=1)  # Merge on sequence length...
 
         # Apply Transformer Blocks...
         for block in self.encoder_blocks:
