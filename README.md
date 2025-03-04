@@ -1,7 +1,5 @@
 # Pretraining_for_M2VTP
 
-![pretrain_network](scr/pretrain_network.png "pretrain_network")
-
 ## Table of Contents
 - [Introduction](#introduction)
 - [Dependencies](#dependencies)
@@ -18,6 +16,8 @@
 ## Introduction
 
 M2VTP is a pretraining network designed for visual-tactile fusion. The pretrained model can be used for downstream tasks for robotics, such as turning the bottle cap with a robotic hand. For more details, please refer to the paper [Masked Visual-Tactile Pre-training for Robot Manipulation](https://www.researchgate.net/publication/378067504_Masked_Visual-Tactile_Pre-training_for_Robot_Manipulation) and the [paper project](https://lqts.github.io/M2VTP/).
+
+![pretrain_network](scr/pretrain_network.png "pretrain_network")
 
 This repository contains the data preprocessing and pretraining code for M2VTP, built on [Voltron](https://github.com/siddk/voltron-robotics).
 
