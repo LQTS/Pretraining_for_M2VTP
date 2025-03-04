@@ -48,7 +48,7 @@ class Pretrain_Config:
 
 
     hydra_ = {
-        "run": {"dir": "pretrain/runs/binary/train/${model.identifier}+dataset-${dataset.name}"}
+        "run": {"dir": "./runs/binary/train/${model.identifier}+dataset-${dataset.name}"}
     }
 
     resume = False  ###################
