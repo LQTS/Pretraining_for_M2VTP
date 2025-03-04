@@ -7,7 +7,7 @@ rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 
 import logging
-import os
+
 import re
 import time
 from dataclasses import dataclass, field
